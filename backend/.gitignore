@@ -1,0 +1,24 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+log/
+logs/
+*-build.xml
+
+# Eclipse / MyEclipse / STS
+.classpath
+.project
+.settings/
+.springBeans
+.STS4IDE
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# Secrets
+src/main/resources/application.yml
+!src/main/resources/application.yml.example
+
+# Logs
+*.log
