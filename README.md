@@ -1,47 +1,47 @@
-#  VibeSync
+# VibeSync
 
 VibeSync is a multi-modal, AI-driven music curation platform. Simply upload an image or type a mood, and VibeSync's intelligent architecture will analyze the "vibe" (lighting, color palette, setting, and emotional tone) to instantly recommend a highly-curated tracklist built directly from the Spotify Search API.
 
-![VibeSync UI 1](./assets/asset1.png)
-![VibeSync UI 2](./assets/asset2.png)
-![VibeSync UI 3](./assets/asset3.png)
 ---
 
-##  Architecture
+## Architecture
 
 VibeSync is a modern microservices application composed of three distinct layers:
 
 1. **Frontend (Next.js / React / Tailwind CSS)**
-   - A highly-polished, glassmorphism UI.
+   - A highly-polished "Neon Spotify" UI aesthetic with deep dark backgrounds and vibrant green accents.
    - Handles Drag-and-Drop image uploads and user prompts.
-   - Renders the custom Spotify Tracklist recommendations natively without relying on heavy iFrames.
+   - Renders custom Spotify Tracklist recommendations natively without relying on heavy iFrames.
+   - Interactive Dashboard, Library (history), and Profile features connected to the backend APIs.
 
 2. **Backend Orchestrator (Spring Boot / Java 21)**
    - Acts as the central nervous system.
-   - Manages comprehensive Spotify OAuth2 Authentication via Spring Security.
+   - Manages comprehensive Spotify OAuth2 Authentication via Spring Security with session cookies.
    - Communicates with the AI microservice to distill raw media into deterministic musical parameters.
-   - Translates AI output into sophisticated queries against the Spotify Web API.
-   - Persists user generation histories to a Neon serverless PostgreSQL database using Spring Data JPA.
+   - Translates AI output into sophisticated, chunked queries against the Spotify Web API (efficiently bypassing API limit constraints).
+   - Persists user generation histories and trending data to a Neon serverless PostgreSQL database using Spring Data JPA.
 
 3. **AI Inference Service (FastAPI / Python)**
    - A lightweight AI translation layer.
    - Receives images (auto-compressed via Pillow to prevent VRAM exhaustion) and textual prompts.
    - Interfaces directly with a locally hosted **Ollama LLaVA** model.
    - Uses strict prompt engineering to force the LLaVA model into a "Master Curator" persona, returning a validated, strict JSON payload containing specific mainstream genres, target tempo, energy, and valence.
+   - Capable of deeply analyzing human facial features, fashion, and even non-realistic/cartoon art styles.
 
 ---
 
-##  Features
+## Features
 
-- **Multi-modal Vibe Detection:** Upload a melancholic rainy window image, or type "late night cyberpunk coding", and the AI will analyze the precise aesthetic.
-- **Read-Only Spotify Integration:** Safely queries the Spotify Search API to curate 20 tracks without requiring risky "Extended Access" playlist modification scopes from Developer Mode.
-- **Dynamic UI:** A stunning, responsive Next.js frontend featuring rich animations, gradient lighting, and a custom scrollable tracklist component.
-- **VRAM Optimizations:** The AI microservice aggressively strips image alpha-channels and downscales them via Pillow before querying the LLM, and forces Ollama model unloading to ensure stable, long-running operation without memory leaks.
+- **Multi-modal Vibe Detection:** Upload a melancholic rainy window image, a stylized cartoon, or type "late night cyberpunk coding", and the AI will analyze the precise aesthetic.
+- **Read-Only Spotify Integration:** Safely queries the Spotify Search API to curate custom-length playlists without requiring risky "Extended Access" playlist modification scopes from Developer Mode.
+- **Dynamic UI & History:** A stunning Next.js frontend featuring rich animations, skeleton loading states, and a real-time history library backed by PostgreSQL.
+- **Trending Metrics:** Real trending data (top genres and moods) dynamically fetched from the database community history.
+- **VRAM Optimizations:** The AI microservice aggressively strips image alpha-channels and downscales them via Pillow before querying the LLM, lowering temperature for deterministic results.
 - **Persistent History:** Every generated vibe and its resulting configuration is tracked securely in PostgreSQL.
 
 ---
 
-##  Prerequisites
+## Prerequisites
 
 To run this project locally, you will need:
 - **Node.js** (v18+) and `npm`
@@ -53,7 +53,7 @@ To run this project locally, you will need:
 
 ---
 
-##  Local Development Setup
+## Local Development Setup
 
 ### 1. The AI Service (FastAPI)
 Navigate to `ai-service/`.
@@ -79,7 +79,7 @@ Navigate to `frontend/`.
 
 ---
 
-##  Spotify Setup Note
+## Spotify Setup Note
 Ensure your Spotify Developer App is configured with the following Redirect URI:
 `http://127.0.0.1:8080/login/oauth2/code/spotify`
 
@@ -87,5 +87,5 @@ Ensure your Spotify Developer App is configured with the following Redirect URI:
 
 ---
 
-##  License
+## License
 This project is open-source and available under the MIT License.
