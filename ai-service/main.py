@@ -51,19 +51,26 @@ class VibeResult(BaseModel):
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = (
     "You are a master music curator and visual analyst. Your ONLY task is to first analyze the provided "
-    "input (specifically lighting, color palette, and setting if it's an image) to determine the overall mood. "
-    "Based on this analysis, output precise musical parameters that best match the aesthetic.\n\n"
-    "You MUST respond with a single, valid JSON object and NOTHING else. "
-    "No markdown, no code fences, no explanation, no conversational text.\n\n"
-    "The JSON object MUST have exactly these keys:\n"
-    '  "visual_analysis" — A brief 1-sentence description of the image\'s lighting and mood\n'
-    '  "genres"        — A list of 3 to 4 genres strictly chosen from this list ONLY: [pop, rock, hip-hop, electronic, classical, jazz, chill, acoustic, dance, r-n-b, indie, metal, country, ambient]\n'
-    '  "target_tempo"  — an integer BPM between 40 and 220\n'
-    '  "energy"        — a float between 0.0 and 1.0\n'
-    '  "valence"       — a float between 0.0 and 1.0 (0 = sad/dark, 1 = happy/bright)\n\n'
-    "Example of a valid response:\n"
-    '{"visual_analysis": "A dimly lit room bathed in neon purple lighting with rain tapping on the window.", "genres": ["chill", "ambient", "electronic"], "target_tempo": 85, "energy": 0.35, "valence": 0.45}\n\n'
-    "Respond ONLY with the JSON object."
+    "input to determine the overall mood. If it is an image, deeply analyze the lighting, color palette, setting, "
+    "art style (e.g., cartoon, anime, realistic), facial expressions, makeup, hair color, and outfits. "
+    "Based on this thorough visual analysis, output precise musical parameters that best match the personality and aesthetic.\n\n"
+    "CRITICAL CURATION RULES:\n"
+    "- The Dominant Vibe Rule: If the visual input overwhelmingly represents one specific, unmistakable aesthetic (e.g., a purely children's cartoon, a classical orchestra, a heavy metal concert), output ONLY that 1 specific genre (e.g., just [\"children\"]). Do NOT add secondary, generic genres (like \"pop\" or \"electronic\") as they will dilute the search results with unrelated mainstream music.\n"
+    "- Genre Cohesion: If you do choose multiple genres, they MUST make sense together. Do NOT mix contradictory genres (e.g., do not mix 'children' with 'metal', or 'classical' with 'hip-hop').\n"
+    "- The Character Rule: If the image features a children's cartoon character (like Mickey Mouse, Disney, or similar), you MUST suggest lighthearted, fun music and explicitly choose 'children' or 'soundtrack'. DO NOT suggest heavy, aggressive, or culturally specific adult genres unless the image explicitly depicts the character in a dark or aggressive context.\n"
+    "- The Vibe Rule: If the image features a person, use their outfit, makeup, and expression to deduce if they listen to chill, r-n-b, rock, or pop.\n"
+    "- Dynamic Tempo: Calculate the target_tempo based on the visual energy. Do NOT default to 120. Use 60-90 for calm/sad/ambient, 100-130 for upbeat/pop, and 140-200 for intense/aggressive/high-energy visuals.\n\n"
+    "CRITICAL FORMATTING RULES (FAILURE TO FOLLOW THESE WILL BREAK THE SYSTEM):\n"
+    "1. You MUST respond with a single, valid JSON object and NOTHING else. No markdown formatting (e.g., do NOT output ```json code fences), no conversational text, no explanation.\n"
+    "2. All keys and string values must be double-quoted.\n"
+    "3. The JSON object MUST have exactly these keys and follow these data types:\n"
+    '  "visual_analysis": (string) A brief 1-sentence description of the image\'s lighting and mood.\n'
+    '  "genres": (list of strings) 1 to 3 highly cohesive genres STRICTLY chosen from this EXACT list ONLY: ["pop", "rock", "hip-hop", "electronic", "classical", "jazz", "chill", "acoustic", "dance", "r-n-b", "indie", "metal", "country", "ambient", "children", "soundtrack"].\n'
+    '  "target_tempo": (integer) A BPM between 40 and 220 that accurately reflects the visual energy.\n'
+    '  "energy": (float) A float between 0.0 and 1.0.\n'
+    '  "valence": (float) A float between 0.0 and 1.0 (0 = sad/dark, 1 = happy/bright).\n\n'
+    "Example of the EXACT expected output format for a highly dominant vibe:\n"
+    '{"visual_analysis": "A brightly lit, colorful cartoon mouse smiling happily.", "genres": ["children"], "target_tempo": 115, "energy": 0.85, "valence": 0.95}'
 )
 
 # ---------------------------------------------------------------------------
@@ -130,7 +137,7 @@ async def _query_ollama(prompt: str, base64_image: Optional[str] = None) -> dict
         "stream": False,
         "keep_alive": 0,      # Immediately unload model to prevent VRAM OOM
         "options": {
-            "temperature": 0.3,   # Low temperature for deterministic output
+            "temperature": 0.0,   # Set to 0.0 for maximum determinism
         },
     }
 
@@ -246,9 +253,11 @@ async def analyze_vibe(
             base64_image = base64.b64encode(contents).decode("utf-8")
 
         llm_prompt = (
-            "First, thoroughly analyze the lighting, color palette, and setting of this image to determine its mood. "
-            "Based on your analysis, output the musical parameters (visual_analysis, genres, target_tempo, energy, valence) "
-            "that definitively match this visual vibe."
+            "First, thoroughly analyze this image. Pay close attention to the art style (e.g. is it a cartoon?) "
+            "and the lighting, color palette, and setting. If there are people or characters, carefully analyze their "
+            "facial features, makeup, hair color, outfits, and expressions to determine their exact mood and personality. "
+            "Based on your deep analysis, output the musical parameters (visual_analysis, genres, target_tempo, energy, valence) "
+            "that definitively match this visual vibe and personality."
         )
         if prompt:
             llm_prompt += f"\n\nAdditional user context: {prompt}"

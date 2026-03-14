@@ -35,6 +35,10 @@ public class PlaylistHistory {
     @Column(columnDefinition = "TEXT")
     private String vibePrompt;
 
+    /** Comma-separated list of AI-generated genres (e.g. "chill,acoustic,indie"). */
+    @Column(columnDefinition = "TEXT")
+    private String genres;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

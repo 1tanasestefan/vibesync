@@ -14,4 +14,5 @@ public class TrackDto {
     private String artist;
     private String albumArtUrl;
     private String externalSpotifyUrl;
+    private String previewUrl;
 }

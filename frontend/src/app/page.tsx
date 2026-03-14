@@ -1,67 +1,72 @@
 "use client";
 
-import React from "react";
-import { Sparkles, LogIn, Music, Image as ImageIcon, Wand2 } from "lucide-react";
+import React, { useState } from "react";
+import { LogIn, Music, Image as ImageIcon, Wand2, Loader2 } from "lucide-react";
 
 export default function Home() {
+  const [isConnecting, setIsConnecting] = useState(false);
+
   const handleLogin = () => {
-    // The user will be sent to our Spring Boot backend which initializes the Spotify OAuth flow
-    window.location.href = "http://127.0.0.1:8080/oauth2/authorization/spotify";
+    setIsConnecting(true);
+    setTimeout(() => {
+      window.location.href = "http://127.0.0.1:8080/oauth2/authorization/spotify";
+    }, 1000);
   };
 
-  return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-50 selection:bg-purple-500/30 font-sans flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="fixed inset-0 pointer-events-none -z-10">
-        <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-gradient-to-br from-purple-600/20 via-transparent to-transparent blur-[120px] rounded-full mix-blend-screen opacity-70 animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[70vw] h-[70vw] bg-gradient-to-tl from-emerald-600/20 via-transparent to-transparent blur-[120px] rounded-full mix-blend-screen opacity-70 animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-      </div>
+  if (isConnecting) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center" style={{ background: "var(--bg-base)" }}>
+        <div className="relative w-20 h-20 flex items-center justify-center animate-scale-in">
+          <div className="absolute inset-0">
+            <div className="orbit-dot absolute w-2.5 h-2.5 rounded-full" style={{ background: "var(--accent-green)", top: "50%", left: "50%", marginTop: "-5px", marginLeft: "-5px" }} />
+          </div>
+          <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1ED760" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold mt-6 animate-fade-in-up" style={{ color: "var(--text-primary)" }}>Connecting to Spotify...</h2>
+        <p className="text-sm mt-2 animate-fade-in-up" style={{ color: "var(--text-secondary)", animationDelay: "100ms" }}>Initiating secure OAuth2 authorization</p>
+        <Loader2 className="w-4 h-4 mt-5 animate-spin" style={{ color: "var(--accent-green)" }} />
+      </main>
+    );
+  }
 
-      <div className="container mx-auto max-w-5xl z-10 text-center flex flex-col items-center">
-        
-        {/* Core Branding */}
-        <div className="mb-8 inline-flex items-center justify-center p-4 bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 rounded-full shadow-2xl">
-          <Sparkles className="w-8 h-8 text-purple-400 mr-3 animate-pulse" />
-          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-emerald-400 to-purple-400">
-            VibeSync
-          </h1>
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "var(--bg-base)" }}>
+      <div className="max-w-4xl text-center flex flex-col items-center">
+        {/* Logo */}
+        <div className="mb-6 animate-scale-in">
+          <svg viewBox="0 0 24 24" className="w-16 h-16" fill="#1ED760" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+          </svg>
         </div>
 
-        <p className="max-w-2xl text-lg md:text-2xl text-neutral-300 font-medium mb-12 leading-relaxed">
-          Translating your visual aesthetic and daily moods directly into curated Spotify playlists using Artificial Intelligence.
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-3 animate-fade-in-up" style={{ color: "var(--text-primary)" }}>
+          VibeSync
+        </h1>
+        <p className="max-w-xl text-base md:text-lg mb-10 leading-relaxed animate-fade-in-up" style={{ color: "var(--text-secondary)", animationDelay: "50ms" }}>
+          Translating your visual aesthetic into curated Spotify playlists using AI.
         </p>
 
-        {/* Action Button */}
-        <button
-          onClick={handleLogin}
-          className="group relative flex items-center gap-3 bg-[#1DB954] hover:bg-[#1ed760] text-black font-bold text-lg md:text-xl py-4 px-10 rounded-full transition-all duration-300 transform hover:scale-105 shadow-[0_0_40px_rgba(29,185,84,0.4)] shadow-[#1DB954]/30 overflow-hidden"
-        >
-          <LogIn className="w-6 h-6 transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
-          <span>Connect with Spotify</span>
-          <div className="absolute inset-0 -z-10 translate-x-[-100%] bg-white/20 transition-transform duration-500 group-hover:translate-x-[100%]" />
+        <button onClick={handleLogin} className="btn-primary text-base py-3.5 px-8 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+          <LogIn className="w-5 h-5" />
+          Connect with Spotify
         </button>
 
-        {/* Feature Highlights */}
-        <div className="grid md:grid-cols-3 gap-8 mt-24 text-left border-t border-neutral-800/50 pt-16">
-          <div className="bg-neutral-900/40 backdrop-blur-md border border-neutral-800 rounded-3xl p-6 transition-transform hover:-translate-y-2 duration-300">
-            <ImageIcon className="w-10 h-10 text-purple-400 mb-4" />
-            <h3 className="text-xl font-bold text-neutral-200 mb-2">Upload Aesthetics</h3>
-            <p className="text-neutral-400">Drag and drop images that capture your current vibe, outfit, or surroundings.</p>
-          </div>
-          
-          <div className="bg-neutral-900/40 backdrop-blur-md border border-neutral-800 rounded-3xl p-6 transition-transform hover:-translate-y-2 duration-300">
-            <Wand2 className="w-10 h-10 text-emerald-400 mb-4" />
-            <h3 className="text-xl font-bold text-neutral-200 mb-2">AI Analysis</h3>
-            <p className="text-neutral-400">Our LLaVA vision model interprets the colors, mood, and context of your image.</p>
-          </div>
-
-          <div className="bg-neutral-900/40 backdrop-blur-md border border-neutral-800 rounded-3xl p-6 transition-transform hover:-translate-y-2 duration-300">
-            <Music className="w-10 h-10 text-purple-400 mb-4" />
-            <h3 className="text-xl font-bold text-neutral-200 mb-2">Curated Playlists</h3>
-            <p className="text-neutral-400">We automatically construct and save a custom Spotify playlist matching the exact energy.</p>
-          </div>
+        {/* Features */}
+        <div className="grid md:grid-cols-3 gap-4 mt-20 text-left w-full" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "2.5rem" }}>
+          {[
+            { icon: ImageIcon, title: "Upload Aesthetics", desc: "Drop images that capture your current vibe." },
+            { icon: Wand2, title: "AI Analysis", desc: "LLaVA vision model interprets mood and context." },
+            { icon: Music, title: "Curated Playlists", desc: "Custom Spotify playlists matching the energy." },
+          ].map(({ icon: Icon, title, desc }, i) => (
+            <div key={title} className="card card-hover p-5 animate-fade-in-up" style={{ animationDelay: `${150 + i * 50}ms` }}>
+              <Icon className="w-8 h-8 mb-3" style={{ color: "var(--accent-green)" }} />
+              <h3 className="text-base font-bold mb-1" style={{ color: "var(--text-primary)" }}>{title}</h3>
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{desc}</p>
+            </div>
+          ))}
         </div>
-
       </div>
     </main>
   );

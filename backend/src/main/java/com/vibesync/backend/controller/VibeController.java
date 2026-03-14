@@ -45,7 +45,19 @@ public class VibeController {
     public ResponseEntity<?> generatePlaylist(
             @RequestPart(value = "image", required = false) MultipartFile image,
             @RequestPart(value = "prompt", required = false) String prompt,
+            @RequestPart(value = "playlistLength", required = false) String playlistLengthStr,
             @RegisteredOAuth2AuthorizedClient("spotify") OAuth2AuthorizedClient authorizedClient) {
+
+        // Parse playlist length with a safe default of 20
+        int playlistLength = 20;
+        if (playlistLengthStr != null && !playlistLengthStr.isBlank()) {
+            try {
+                playlistLength = Integer.parseInt(playlistLengthStr.trim());
+                if (playlistLength < 1 || playlistLength > 50) playlistLength = 20;
+            } catch (NumberFormatException e) {
+                playlistLength = 20;
+            }
+        }
 
         // ── Validation ─────────────────────────────────────
         if ((image == null || image.isEmpty()) && (prompt == null || prompt.isBlank())) {
@@ -70,7 +82,7 @@ public class VibeController {
             // Step 2: Fetch Track Recommendations
             // ──────────────────────────────────────────────
             log.info(">>> Step 2/3 — Fetching track recommendations");
-            java.util.List<com.vibesync.backend.dto.TrackDto> tracks = spotifyService.getRecommendations(aiResult, authorizedClient);
+            java.util.List<com.vibesync.backend.dto.TrackDto> tracks = spotifyService.getRecommendations(aiResult, authorizedClient, playlistLength);
             log.info("    Found {} tracks", tracks.size());
 
             if (tracks.isEmpty()) {
@@ -94,6 +106,7 @@ public class VibeController {
                     .userId(spotifyService.getCurrentUserId(authorizedClient)) // Fetch actual user ID
                     .spotifyPlaylistUrl(dummyUrl)
                     .vibePrompt(effectivePromptForHistory)
+                    .genres(String.join(",", aiResult.getGenres()))
                     .build();
 
             try {

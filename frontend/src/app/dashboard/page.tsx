@@ -1,282 +1,298 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, Music, Sparkles, Loader2, PlayCircle, X } from "lucide-react";
-import { generateVibePlaylist } from "@/services/api";
+import { UploadCloud, Sparkles, Loader2, PlayCircle, X, Image as ImageIcon, ListPlus, Plus, User, Crown } from "lucide-react";
+import { generateVibePlaylist, createPlaylist as createPlaylistApi, getUserProfile } from "@/lib/api";
+import { useAppStore, Track, SavedPlaylist } from "@/store/useAppStore";
+import TrackRow from "@/components/TrackRow";
+import SkeletonCard from "@/components/SkeletonCard";
+
+const loadingSteps = [
+  "Compressing image...",
+  "Analyzing visual vibe...",
+  "Extracting mood & tone...",
+  "Curating genres...",
+  "Searching Spotify...",
+  "Building tracklist...",
+  "Releasing memory...",
+];
 
 export default function Dashboard() {
+  const { state, dispatch } = useAppStore();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  // Instead of a URL, we now receive a full payload of tracks
   const [playlistResult, setPlaylistResult] = useState<{
     playlistName?: string;
     vibePrompt?: string;
-    tracks: {
-      name: string;
-      artist: string;
-      albumArtUrl: string;
-      externalSpotifyUrl: string;
-    }[];
+    visualAnalysis?: string;
+    tracks: Track[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadingIdx, setLoadingIdx] = useState(0);
+  const [selectedTracks, setSelectedTracks] = useState<Set<number>>(new Set());
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
+
+  const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGenerating) {
+      setLoadingIdx(0);
+      interval = setInterval(() => setLoadingIdx((p) => (p + 1) % loadingSteps.length), 2800);
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
+
+  // Fetch user profile for the avatar
+  useEffect(() => {
+    getUserProfile().then(setProfile).catch(() => {});
+  }, []);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      setImageFile(acceptedFiles[0]);
+      setImagePreview(URL.createObjectURL(acceptedFiles[0]));
       setError(null);
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "image/*": [".jpeg", ".jpg", ".png", ".webp"],
-    },
-    maxFiles: 1,
+    onDrop, accept: { "image/*": [".jpeg", ".jpg", ".png", ".webp"] }, maxFiles: 1,
   });
 
-  const clearImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setImageFile(null);
-    setImagePreview(null);
-  };
+  const clearImage = (e: React.MouseEvent) => { e.stopPropagation(); setImageFile(null); setImagePreview(null); };
 
   const handleGenerate = async () => {
-    if (!imageFile && !prompt.trim()) {
-      setError("Please provide either an image vibe or a text description.");
-      return;
-    }
-
-    setIsGenerating(true);
-    setError(null);
-    setPlaylistResult(null);
-
+    if (!imageFile && !prompt.trim()) { setError("Provide an image or text description."); return; }
+    setIsGenerating(true); setError(null); setPlaylistResult(null); setSelectedTracks(new Set());
     try {
-      const result = await generateVibePlaylist(imageFile, prompt);
-      
-      // Expected payload format directly mirrors PlaylistResponse DTO
-      if (result && result.tracks && Array.isArray(result.tracks)) {
+      const result = await generateVibePlaylist(imageFile, prompt, state.settings.playlistLength);
+      if (result?.tracks?.length) {
         setPlaylistResult(result);
-      } else {
-        setError("Received an invalid response format from the server.");
-        console.error("Backend response:", result);
-      }
+        dispatch({ type: "ADD_HISTORY_ENTRY", payload: { id: Date.now().toString(), imageUrl: imagePreview || undefined, playlistName: result.playlistName || "VibeSync Playlist", vibePrompt: result.vibePrompt || prompt || "Image Upload", trackCount: result.tracks.length, createdAt: new Date().toISOString() } });
+      } else { setError("Received an invalid response."); }
     } catch (err: any) {
-      console.error(err);
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        setError("Your session expired. Please go back and Login with Spotify again.");
-      } else {
-        setError(err.response?.data?.message || err.message || "Failed to generate playlist. Please try again.");
-      }
-    } finally {
-      setIsGenerating(false);
+      if (err.response?.status === 401 || err.response?.status === 403) setError("Session expired. Please log in again.");
+      else setError(err.response?.data?.message || err.message || "Failed to generate playlist.");
+    } finally { setIsGenerating(false); }
+  };
+
+  const toggleTrackSelect = (i: number) => setSelectedTracks((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+
+  const handleCreatePlaylist = async () => {
+    if (!playlistResult) return;
+    const name = newPlaylistName.trim() || `Vibe Playlist ${state.savedPlaylists.length + 1}`;
+
+    // Extract track URIs from Spotify URLs
+    const trackUris = playlistResult.tracks
+      .map((t) => { const m = t.externalSpotifyUrl?.match(/track\/([a-zA-Z0-9]+)/); return m ? `spotify:track:${m[1]}` : null; })
+      .filter(Boolean) as string[];
+
+    // Save to Spotify via API
+    try {
+      const result = await createPlaylistApi(name, trackUris);
+      showToast(`✓ Playlist "${name}" created on Spotify!`);
+
+      // Also save locally
+      const playlist: SavedPlaylist = { id: Date.now().toString(), name, tracks: playlistResult.tracks, createdAt: new Date().toISOString() };
+      dispatch({ type: "ADD_PLAYLIST", payload: playlist });
+    } catch (err: any) {
+      console.error("Failed to create playlist on Spotify:", err);
+      showToast("Saved locally (Spotify API error)");
+      const playlist: SavedPlaylist = { id: Date.now().toString(), name, tracks: playlistResult.tracks, createdAt: new Date().toISOString() };
+      dispatch({ type: "ADD_PLAYLIST", payload: playlist });
     }
+
+    setShowCreatePlaylist(false);
+    setNewPlaylistName("");
+  };
+
+  const handleAddSelectedToPlaylist = (playlistId: string) => {
+    if (!playlistResult) return;
+    const tracks = Array.from(selectedTracks).map((i) => playlistResult.tracks[i]);
+    dispatch({ type: "ADD_TRACKS_TO_PLAYLIST", payload: { playlistId, tracks } });
+    setSelectedTracks(new Set());
+    setShowAddToPlaylist(false);
+    showToast(`✓ ${tracks.length} tracks added`);
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-50 selection:bg-purple-500/30 font-sans pb-20">
-      {/* Background Decor */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-purple-600/10 via-transparent to-transparent blur-[120px] rounded-full mix-blend-screen opacity-50" />
-        <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-emerald-600/10 via-transparent to-transparent blur-[120px] rounded-full mix-blend-screen opacity-50" />
-      </div>
+    <div className="min-h-screen p-6 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <header className="mb-8 animate-fade-in-up flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h1 className="text-2xl md:text-3xl font-bold" style={{ color: "var(--text-primary)" }}>Welcome to VibeSync</h1>
+              <span className="badge"><Sparkles className="w-3 h-3" /> AI-Powered Music Discovery</span>
+            </div>
+            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Upload a photo or describe a vibe to curate your perfect tracklist.</p>
+          </div>
 
-      <div className="container mx-auto px-6 py-12 max-w-4xl relative z-10">
-        
-        {/* Header section */}
-        <header className="mb-12 text-center md:text-left pt-8">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-emerald-400 flex items-center justify-center md:justify-start gap-3">
-            <Sparkles className="w-8 h-8 text-purple-400" />
-            Welcome to VibeSync
-          </h1>
-          <p className="mt-4 text-neutral-400 text-lg max-w-2xl">
-            You are successfully authenticated. Upload a photo or type a specific vibe to let the AI curate your perfect tracklist.
-          </p>
-        </header>
-
-        {/* Main Content Card */}
-        <div className="bg-neutral-900/60 backdrop-blur-2xl border border-neutral-800 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
-          {/* Subtle inner glow */}
-          <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent opacity-50 pointer-events-none" />
-
-          <div className="grid md:grid-cols-2 gap-10 relative z-10">
-            {/* Left Col: Upload */}
-            <div className="flex flex-col gap-4">
-              <h2 className="text-xl font-semibold flex items-center gap-2 text-neutral-200">
-                <UploadCloud className="w-5 h-5 text-purple-400" />
-                Upload a Vibe Image
-              </h2>
-              
-              <div
-                {...getRootProps()}
-                className={`relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-300 overflow-hidden group ${
-                  isDragActive
-                    ? "border-purple-500 bg-purple-500/10 scale-[1.02]"
-                    : "border-neutral-700 bg-neutral-900/50 hover:bg-neutral-800 hover:border-neutral-500"
-                }`}
-              >
-                <input {...getInputProps()} />
-                
-                {imagePreview ? (
-                  <>
-                    <img 
-                      src={imagePreview} 
-                      alt="Vibe Preview" 
-                      className="absolute inset-0 w-full h-full object-cover opacity-80 transition-opacity group-hover:opacity-40"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
-                      <p className="font-medium text-white mb-2">Drop new image to replace</p>
-                    </div>
-                    <button 
-                      onClick={clearImage}
-                      className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-red-500/90 rounded-full text-white backdrop-blur-md transition-colors shadow-lg"
-                      title="Clear image"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </>
+          {/* User Avatar */}
+          {profile && (
+            <div className="flex flex-col items-center gap-1.5 shrink-0 mt-1">
+              <div className="relative">
+                {profile.imageUrl ? (
+                  <img src={profile.imageUrl} alt={profile.displayName} className="w-10 h-10 rounded-full object-cover shadow-lg" style={{ border: "2px solid var(--bg-elevated)" }} />
                 ) : (
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
-                    <div className="p-4 bg-neutral-800 rounded-full mb-4 group-hover:scale-110 group-hover:bg-neutral-700 transition-all duration-300">
-                      <UploadCloud className="w-8 h-8 text-neutral-400" />
-                    </div>
-                    <p className="mb-2 text-sm text-neutral-300">
-                      <span className="font-semibold text-purple-400">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-neutral-500 font-medium">PNG, JPG, WebP up to 10MB</p>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: "var(--bg-elevated)", border: "2px solid var(--border-subtle)" }}>
+                    <User className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
+                  </div>
+                )}
+                {profile.product === "premium" && (
+                  <div className="absolute -bottom-1.5 -right-1.5 bg-black/80 rounded-full p-1 shadow-sm backdrop-blur-sm" style={{ color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
+                    <Crown className="w-3 h-3" fill="currentColor" />
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Right Col: Prompt */}
-            <div className="flex flex-col gap-4">
-               <h2 className="text-xl font-semibold flex items-center gap-2 text-neutral-200">
-                <Music className="w-5 h-5 text-emerald-400" />
-                Describe the Mood
-              </h2>
-              
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="E.g., late night coding session with neon city lights reflecting in the window, rain pouring down outside..."
-                className="w-full h-32 md:h-full bg-neutral-900/50 border border-neutral-700 text-neutral-200 rounded-2xl p-5 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 outline-none resize-none transition-all placeholder:text-neutral-600 text-base leading-relaxed"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="mt-8 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-200 text-sm text-center animate-in fade-in slide-in-from-bottom-2">
-              {error}
-            </div>
           )}
+        </header>
 
-          {/* Action Button */}
-          <div className="mt-10 flex justify-center relative z-10">
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || (!imageFile && !prompt.trim())}
-              className={`group relative flex items-center justify-center gap-3 w-full md:w-auto md:min-w-[320px] overflow-hidden rounded-full p-4 font-bold text-lg transition-all duration-300
-                ${isGenerating || (!imageFile && !prompt.trim())
-                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-70"
-                  : "bg-white text-black hover:scale-105 shadow-[0_0_40px_rgba(255,255,255,0.15)]"
-                }
-              `}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>Consulting the vibe authorities...</span>
-                </>
-              ) : (
-                <>
-                  <PlayCircle className="w-6 h-6 group-hover:text-emerald-500 transition-colors" />
-                  <span>Curate Tracklist</span>
-                  {/* Hover effect gradient overlay */}
-                  <div className="absolute inset-0 -z-10 translate-x-[-100%] bg-gradient-to-r from-purple-200 via-emerald-200 to-purple-200 opacity-20 transition-transform duration-500 group-hover:translate-x-[100%]" />
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Read-Only Tracklist Result Section */}
-        {playlistResult && (
-          <div className="mt-16 animate-in slide-in-from-bottom-8 fade-in duration-700">
-            <div className="flex items-center justify-center mb-8 gap-4">
-              <div className="h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent flex-1" />
-              <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-emerald-400 flex items-center gap-2">
-                <Sparkles className="w-6 h-6 text-emerald-400" />
-                Your Custom Vibe
-                <Sparkles className="w-6 h-6 text-purple-400" />
-              </h3>
-              <div className="h-px bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent flex-1" />
+        {/* Content */}
+        {isGenerating ? (
+          <div className="animate-fade-in">
+            <SkeletonCard lines={6} />
+            <div className="flex items-center justify-center gap-2 mt-5">
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--accent-green)" }} />
+              <span key={loadingIdx} className="text-sm font-medium animate-fade-in" style={{ color: "var(--text-secondary)" }}>{loadingSteps[loadingIdx]}</span>
             </div>
-            
-            <div className="rounded-[2rem] overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-900/50 p-6 backdrop-blur-xl">
-              
-              <div className="mb-6 flex justify-between items-center text-sm text-neutral-400">
-                <span>{playlistResult.tracks.length} curated tracks</span>
-                <span className="italic">"{playlistResult.vibePrompt || "Image Upload"}"</span>
+          </div>
+        ) : (
+          <div className="card p-6 md:p-8 animate-fade-in-up" style={{ animationDelay: "50ms" }}>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Upload */}
+              <div>
+                <h2 className="text-sm font-semibold mb-3 flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                  <UploadCloud className="w-4 h-4" style={{ color: "var(--accent-green)" }} /> Upload a Vibe Image
+                </h2>
+                <div {...getRootProps()} className={`upload-zone ${isDragActive ? "drag-active" : ""} relative flex flex-col items-center justify-center w-full h-56 cursor-pointer overflow-hidden group`}>
+                  <input {...getInputProps()} />
+                  {imagePreview ? (
+                    <>
+                      <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-40 transition-opacity" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <p className="text-sm font-medium text-white">Drop new image</p>
+                      </div>
+                      <button onClick={clearImage} className="absolute top-2 right-2 p-1.5 rounded bg-black/60 text-white hover:bg-red-500/80 transition-colors" title="Clear">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="text-center px-4">
+                      <UploadCloud className="w-7 h-7 mx-auto mb-3" style={{ color: "var(--text-muted)" }} />
+                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}><span className="font-semibold" style={{ color: "var(--accent-green)" }}>Click to upload</span> or drag and drop</p>
+                      <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>PNG, JPG, WebP up to 10MB</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Scrollable Tracklist */}
-              <div className="flex flex-col gap-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                {playlistResult.tracks.map((track, i) => (
-                  <div 
-                    key={i}
-                    className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-2xl bg-black/40 hover:bg-neutral-800/60 border border-transparent hover:border-neutral-700/50 transition-all gap-4"
-                  >
-                    <div className="flex items-center gap-4 w-full">
-                      {/* Album Art */}
-                      <div className="relative w-16 h-16 shrink-0 overflow-hidden rounded-xl shadow-lg group-hover:shadow-purple-500/20 transition-all">
-                        {track.albumArtUrl ? (
-                          <img src={track.albumArtUrl} alt={track.name} className="object-cover w-full h-full" />
-                        ) : (
-                          <div className="w-full h-full bg-neutral-800 flex items-center justify-center">
-                            <Music className="w-6 h-6 text-neutral-600" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <PlayCircle className="w-8 h-8 text-white drop-shadow-md" />
-                        </div>
-                      </div>
-
-                      {/* Track Details */}
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="font-bold text-neutral-100 truncate text-lg group-hover:text-purple-300 transition-colors">
-                          {track.name}
-                        </span>
-                        <span className="text-zinc-400 text-sm truncate">
-                          {track.artist}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Listen Actions */}
-                    <div className="w-full md:w-auto flex justify-end shrink-0">
-                       <a 
-                        href={track.externalSpotifyUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="w-full md:w-auto text-center text-sm font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 px-5 py-2.5 rounded-full transition-all"
-                      >
-                        Listen
-                      </a>
-                    </div>
-                  </div>
-                ))}
+              {/* Prompt */}
+              <div>
+                <h2 className="text-sm font-semibold mb-3 flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                  <ImageIcon className="w-4 h-4" style={{ color: "var(--accent-green)" }} /> Describe the Mood
+                </h2>
+                <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="E.g., late night coding with neon city lights, rain outside..." className="input-field w-full h-56 resize-none text-sm leading-relaxed" />
               </div>
-              
+            </div>
+
+            {error && <div className="mt-5 p-3 rounded text-sm text-center" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5" }}>{error}</div>}
+
+            <div className="mt-6 flex justify-center">
+              <button onClick={handleGenerate} disabled={isGenerating || (!imageFile && !prompt.trim())} className="btn-primary text-base py-3 px-8">
+                <PlayCircle className="w-5 h-5" /> Curate Tracklist
+              </button>
             </div>
           </div>
         )}
+
+        {/* Results */}
+        {playlistResult && (
+          <div className="mt-10 animate-fade-in-up">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="h-px flex-1" style={{ background: "var(--border-subtle)" }} />
+              <h3 className="text-base font-bold flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                <Sparkles className="w-4 h-4" style={{ color: "var(--accent-green)" }} /> Your Custom Vibe
+              </h3>
+              <div className="h-px flex-1" style={{ background: "var(--border-subtle)" }} />
+            </div>
+
+            {/* Visual analysis */}
+            {(playlistResult.visualAnalysis || imagePreview) && (
+              <div className="card p-4 mb-4 flex items-start gap-4 animate-fade-in-up" style={{ animationDelay: "50ms" }}>
+                {imagePreview && <div className="w-16 h-16 rounded overflow-hidden shrink-0 shadow"><img src={imagePreview} alt="Analyzed" className="w-full h-full object-cover" /></div>}
+                <div>
+                  <h4 className="text-xs font-semibold mb-1" style={{ color: "var(--accent-green)" }}>Visual Analysis</h4>
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{playlistResult.visualAnalysis || playlistResult.vibePrompt || "AI analyzed the image."}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tracklist */}
+            <div className="card p-5 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{playlistResult.tracks.length} tracks</span>
+                <div className="flex items-center gap-2">
+                  {selectedTracks.size > 0 && (
+                    <div className="relative">
+                      <button onClick={() => setShowAddToPlaylist(!showAddToPlaylist)} className="badge cursor-pointer"><Plus className="w-3 h-3" /> Add {selectedTracks.size} to Playlist</button>
+                      {showAddToPlaylist && state.savedPlaylists.length > 0 && (
+                        <div className="absolute right-0 top-full mt-1.5 w-52 card p-1.5 z-50 animate-scale-in">
+                          {state.savedPlaylists.map((pl) => (
+                            <button key={pl.id} onClick={() => handleAddSelectedToPlaylist(pl.id)} className="w-full text-left px-3 py-1.5 text-sm rounded transition-colors hover:bg-[var(--bg-elevated)]" style={{ color: "var(--text-secondary)" }}>{pl.name}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={() => setShowCreatePlaylist(true)} className="btn-primary !py-1.5 !px-4 !text-sm">
+                    <ListPlus className="w-4 h-4" /> Create Playlist
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-0.5 max-h-[550px] overflow-y-auto custom-scrollbar">
+                {playlistResult.tracks.map((track, i) => (
+                  <TrackRow key={`${track.name}-${i}`} track={track} index={i} selectable selected={selectedTracks.has(i)} onToggleSelect={() => toggleTrackSelect(i)} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <footer className="mt-12 pb-6 text-center">
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Designed & developed by <span style={{ color: "var(--accent-green)" }} className="font-semibold">Tanase Stefan-Daniel</span></p>
+        </footer>
       </div>
-    </main>
+
+      {/* Create Playlist Modal */}
+      {showCreatePlaylist && (
+        <div className="modal-backdrop" onClick={() => setShowCreatePlaylist(false)}>
+          <div className="modal-content card w-full max-w-md mx-4 p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold mb-3" style={{ color: "var(--text-primary)" }}>Create New Playlist</h3>
+            <input type="text" value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} placeholder={`Vibe Playlist ${state.savedPlaylists.length + 1}`} className="input-field w-full mb-4" autoFocus onKeyDown={(e) => e.key === "Enter" && handleCreatePlaylist()} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowCreatePlaylist(false)} className="btn-secondary !text-sm !py-2">Cancel</button>
+              <button onClick={handleCreatePlaylist} className="btn-primary !text-sm !py-2">Save to Spotify</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && <div className="toast">{toast}</div>}
+    </div>
   );
 }
